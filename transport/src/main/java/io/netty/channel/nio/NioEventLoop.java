@@ -179,6 +179,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 这个maybeSelectorImplClass其实就是jdk1.7里面对于linux中用epoll来实现Selector的具体实现类
         Object maybeSelectorImplClass = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
@@ -210,10 +211,15 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             @Override
             public Object run() {
                 try {
+                    // selectorImplClass这个类是sun.nio.ch.SelectorImpl
                     Field selectedKeysField = selectorImplClass.getDeclaredField("selectedKeys");
                     Field publicSelectedKeysField = selectorImplClass.getDeclaredField("publicSelectedKeys");
 
+                    // 这是一个可以学习到的地方，jdk9将unsafe类移动到了jdk.internal.misc，已经可以使用了
                     if (PlatformDependent.javaVersion() >= 9 && PlatformDependent.hasUnsafe()) {
+                        // objectFieldOffset()方法用于获取某个字段相对Java对象的“起始地址”的偏移量
+                        // 这个方式太NB了，直接获取偏移量，selectedKeysField针对Java对象的偏移量
+                        // 这个就是优化点
                         // Let us try to use sun.misc.Unsafe to replace the SelectionKeySet.
                         // This allows us to also do this in Java9+ without any extra flags.
                         long selectedKeysFieldOffset = PlatformDependent.objectFieldOffset(selectedKeysField);
@@ -221,6 +227,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                                 PlatformDependent.objectFieldOffset(publicSelectedKeysField);
 
                         if (selectedKeysFieldOffset != -1 && publicSelectedKeysFieldOffset != -1) {
+                            // 修改非基本数据类型的值
+                            // 这里就是将偏移量放到unwrappedSelector中对应的selectedKeySet
+                            // 底层调用putObject(object , offset , value)
+                            // 就是用value替换object对象对应的offset偏移量的地址的那个对象
                             PlatformDependent.putObject(
                                     unwrappedSelector, selectedKeysFieldOffset, selectedKeySet);
                             PlatformDependent.putObject(
@@ -431,6 +441,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    // 这里就是reactor线程做的事情
+    // reactor线程大概做的事情分为对三个步骤不断循环
     @Override
     protected void run() {
         int selectCnt = 0;
@@ -438,6 +450,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             try {
                 int strategy;
                 try {
+                    // 这里传入的selectNowSupplier就是一个非阻塞获取select的值，以及一个队列里面是否还有任务
+                    // 很奇怪，为什么有任务就是不执行了
+                    // 这里其实就是如果有任务，返回selectSupplier.get()，如果没有任务但会SelectStrategy.SELECT
+                    // selectSupplier.get()就是调用selector.selectNow()，这是非阻塞的，selector.select是阻塞的
+                    // selector.select是返回channel
+                    // TODO 这里感觉是返回对应的linux的fd，应该是连接fd
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
                     case SelectStrategy.CONTINUE:
@@ -446,17 +464,23 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     case SelectStrategy.BUSY_WAIT:
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
+                        // TODO 这个是做啥的，意思就是队列里面还有任务
                     case SelectStrategy.SELECT:
+                        // 这里就是返回下一个任务的最后期限，如果没有计划任务，返回-1。
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                         if (curDeadlineNanos == -1L) {
                             curDeadlineNanos = NONE; // nothing on the calendar
                         }
+                        // 就是说在下一个任务最后期限的时候唤醒，但是是唤醒什么
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
                             if (!hasTasks()) {
+                                // 这里再次判断有没有任务，有点像CLH队列里面的，不等唤醒就提前询问
+                                // 如果没有任务了调用selector.select()阻塞
                                 strategy = select(curDeadlineNanos);
                             }
                         } finally {
+                            // TODO 不懂
                             // This update is just to help block unnecessary selector wakeups
                             // so use of lazySet is ok (no race condition)
                             nextWakeupNanos.lazySet(AWAKE);
@@ -465,31 +489,39 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     default:
                     }
                 } catch (IOException e) {
+                    // 其实就是内部跳动selector.selectNow()的时候，可能会引发异常，例如selector关闭等问题，然后在这里进行的捕获
                     // If we receive an IOException here its because the Selector is messed up. Let's rebuild
                     // the selector and retry. https://github.com/netty/netty/issues/8566
                     rebuildSelector0();
                     selectCnt = 0;
+                    // TODO 这里感觉是防止jdk7的selector空轮询
                     handleLoopException(e);
                     continue;
                 }
 
+                // TODO 这里就是对selectCnt进行计数，这是干啥的
                 selectCnt++;
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
+                // TODO 这个变量是啥
                 final int ioRatio = this.ioRatio;
                 boolean ranTasks;
                 if (ioRatio == 100) {
                     try {
                         if (strategy > 0) {
+                            // 其实就是这里就是selector.selectNow()有连接，因为没有连接返回是0
+                            // 2.处理产生网络IO事件的channel
                             processSelectedKeys();
                         }
                     } finally {
+                        // 跑任务队列
                         // Ensure we always run tasks.
                         ranTasks = runAllTasks();
                     }
                 } else if (strategy > 0) {
                     final long ioStartTime = System.nanoTime();
                     try {
+                        // 2.处理产生网络IO事件的channel
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
@@ -571,8 +603,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    // 就是查看selectedKeys是不是经过优化的，查看优化的地方是看openSelector()方法里面
     private void processSelectedKeys() {
         if (selectedKeys != null) {
+            // 处理优化过的selectedKeys
             processSelectedKeysOptimized();
         } else {
             processSelectedKeysPlain(selector.selectedKeys());

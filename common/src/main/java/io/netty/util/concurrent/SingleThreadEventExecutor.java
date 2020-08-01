@@ -947,6 +947,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void startThread() {
         if (state == ST_NOT_STARTED) {
+            // TODO STATE_UPDATER一个采用CAS原理整数
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
@@ -982,6 +983,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 默认情况下，ThreadPerTaskExecutor 在每次执行execute方法的时候都会通过
+        // DefaultThreadFactory创建一个FastThreadLocalThread线程，而这个线程就是netty中的reactor线程实体
         executor.execute(new Runnable() {
             @Override
             public void run() {
