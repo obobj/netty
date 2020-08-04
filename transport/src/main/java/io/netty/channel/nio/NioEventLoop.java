@@ -673,21 +673,28 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeysOptimized() {
         for (int i = 0; i < selectedKeys.size; ++i) {
+            // 1.取出IO事件以及对应的channel
             final SelectionKey k = selectedKeys.keys[i];
+            // 注意这里的null是为了解决内存泄露的问题
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
 
+            // TODO attachment是什么
             final Object a = k.attachment();
 
+            // 2.处理该channel
+            // 这里就是表示为什么attachment是一个AbstractNioChannel
             if (a instanceof AbstractNioChannel) {
                 processSelectedKey(k, (AbstractNioChannel) a);
             } else {
+                // 另一种类型NioTask，NioTask主要是用于当一个 SelectableChannel 注册到selector的时候，执行一些任务
                 @SuppressWarnings("unchecked")
                 NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
                 processSelectedKey(k, task);
             }
 
+            // 3.判断是否该再来次轮询
             if (needsToSelectAgain) {
                 // null out entries in the array to allow to have it GC'ed once the Channel close
                 // See https://github.com/netty/netty/issues/2363
