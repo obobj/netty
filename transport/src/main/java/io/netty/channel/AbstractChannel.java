@@ -462,8 +462,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 后续所有的channel都是交给eventLoop处理
             AbstractChannel.this.eventLoop = eventLoop;
 
+            // register0 这里才是实际注册
+            // 调用jdk底层注册
+            // 1. doRegister
+            // 2. invokeHandlerAddedIfNeeded 时间回调
+            // 3. fireChannelRegistered 发布一个注册成功的事件
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
@@ -502,6 +508,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);
+                // 这里触发Registered事件
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
@@ -553,7 +560,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 closeIfClosed();
                 return;
             }
-
+            // 这里第一次应该是端口绑定未完成
+            // 绑定后就完成了，触发active事件
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override

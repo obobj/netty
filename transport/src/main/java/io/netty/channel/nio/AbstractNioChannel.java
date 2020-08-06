@@ -377,7 +377,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                // javaChannel()就是在创建java channel的时候会创建一个服务端底层的channel，就是保存到ch
                 // 这里其实就是在selector上面注册通道，底层就是epoll、poll等等上面注册文件描述符fd
+                // 这里的this就是把AbstractNioChannel放到attachment
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {

@@ -32,9 +32,14 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
     @SuppressWarnings("unchecked")
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
+        // 判断是不是二的倍数
+        // &比%性能高很多
+        // 是二的倍数 index++ & (length-1)
+        // 不是二的倍数 abs(index++ % length)
         if (isPowerOfTwo(executors.length)) {
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
+            // 这里就是取模
             return new GenericEventExecutorChooser(executors);
         }
     }

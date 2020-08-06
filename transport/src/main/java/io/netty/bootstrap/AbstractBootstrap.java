@@ -239,6 +239,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return doBind(localAddress);
     }
 
+    // 这里才是正式开始启动
     /**
      * Create a new {@link Channel} and bind it.
      */
@@ -307,6 +308,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            //
             channel = channelFactory.newChannel();
             init(channel);
         } catch (Throwable t) {
@@ -320,6 +322,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        // register是一个入口
+        // 最终调用到io.netty.channel.AbstractChannel.AbstractUnsafe.register
+        // 1. 绑定线程
+        // 2.
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

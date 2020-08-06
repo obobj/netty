@@ -1001,6 +1001,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline read() {
+        // 这里就是最后的传播
         tail.read();
         return this;
     }
@@ -1395,6 +1396,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
+            // 这里就是出现了回调了Active事件，然后回调事件的时候这里完成了继续向下面传播
             ctx.fireChannelActive();
 
             readIfIsAutoRead();
@@ -1417,6 +1419,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             readIfIsAutoRead();
         }
 
+        // 处理一个read事件
         private void readIfIsAutoRead() {
             if (channel.config().isAutoRead()) {
                 channel.read();

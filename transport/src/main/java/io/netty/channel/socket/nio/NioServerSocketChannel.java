@@ -87,6 +87,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
         super(null, channel, SelectionKey.OP_ACCEPT);
+        // socket 配置的一个抽象
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
 
