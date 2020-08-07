@@ -168,6 +168,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    // 其实这个尝试能不能找到sun.nio.ch.SelectorImpl类并实例化，
+    // 但是sun.nio.ch.SelectorImpl是linux epoll的实现，mac和windows都是不行
+    // 那么退而求其次，既然mac是kqueue，我们就用SelectorImpl的selectedKeys和publicSelectedKeys替换kqueue中对应的变量
+    // 其实就是netty认为SelectorImpl性能比较好，尽量靠近
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
@@ -176,11 +180,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             throw new ChannelException("failed to open a new selector", e);
         }
 
+        // 不尝试优化，就直接返回了
         if (DISABLE_KEY_SET_OPTIMIZATION) {
             return new SelectorTuple(unwrappedSelector);
         }
 
         // 这个maybeSelectorImplClass其实就是jdk1.7里面对于linux中用epoll来实现Selector的具体实现类
+        // 这里就是尝试获取sun.nio.ch.SelectorImpl，但是在mac中是获取不了的，类加载器实例了kqueue
+        // TODO 这里讨论SelectorImpl有什么优化，就是因为有一定的优化，netty才通过反射进行了替换
         Object maybeSelectorImplClass = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
@@ -195,6 +202,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         });
 
+        // 这里就是判断确定是不是Selector的实现类，也就是子类
+        // sun.nio.ch.SelectorImpl肯定不是Selector的子类
         if (!(maybeSelectorImplClass instanceof Class) ||
             // ensure the current selector implementation is what we can instrument.
             !((Class<?>) maybeSelectorImplClass).isAssignableFrom(unwrappedSelector.getClass())) {
@@ -676,6 +685,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         for (int i = 0; i < selectedKeys.size; ++i) {
             // 1.取出IO事件以及对应的channel
             final SelectionKey k = selectedKeys.keys[i];
+            // 这里的null很重要
             // 注意这里的null是为了解决内存泄露的问题
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
