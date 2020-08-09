@@ -133,16 +133,16 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private boolean needsToSelectAgain;
 
     NioEventLoop(NioEventLoopGroup parent, Executor executor, SelectorProvider selectorProvider,
-                 SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler,
-                 EventLoopTaskQueueFactory queueFactory) {
-        super(parent, executor, false, newTaskQueue(queueFactory), newTaskQueue(queueFactory),
-                rejectedExecutionHandler);
-        this.provider = ObjectUtil.checkNotNull(selectorProvider, "selectorProvider");
-        this.selectStrategy = ObjectUtil.checkNotNull(strategy, "selectStrategy");
-        // 一个selector和一个NioEventLoop做唯一的绑定
-        final SelectorTuple selectorTuple = openSelector();
-        this.selector = selectorTuple.selector;
-        this.unwrappedSelector = selectorTuple.unwrappedSelector;
+                SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler,
+                EventLoopTaskQueueFactory queueFactory) {
+            super(parent, executor, false, newTaskQueue(queueFactory), newTaskQueue(queueFactory),
+                    rejectedExecutionHandler);
+            this.provider = ObjectUtil.checkNotNull(selectorProvider, "selectorProvider");
+            this.selectStrategy = ObjectUtil.checkNotNull(strategy, "selectStrategy");
+            // 一个selector和一个NioEventLoop做唯一的绑定
+            final SelectorTuple selectorTuple = openSelector();
+            this.selector = selectorTuple.selector;
+            this.unwrappedSelector = selectorTuple.unwrappedSelector;
     }
 
     private static Queue<Runnable> newTaskQueue(

@@ -69,6 +69,9 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
     }
 
     public NioEventLoopGroup(int nThreads, Executor executor) {
+        // provider负责创建每一个NioEventLoop维护的select
+        // select其实就是负责管理注册在上面的SelectableChannel
+        // 底层就是linux里面就是select->epoll,SelectableChannel->fd（文件描述符）
         this(nThreads, executor, SelectorProvider.provider());
     }
 
@@ -78,6 +81,7 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
      */
     public NioEventLoopGroup(
             int nThreads, ThreadFactory threadFactory, final SelectorProvider selectorProvider) {
+        // 负责创建线程选择器
         this(nThreads, threadFactory, selectorProvider, DefaultSelectStrategyFactory.INSTANCE);
     }
 
@@ -94,8 +98,8 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
     public NioEventLoopGroup(int nThreads, Executor executor, final SelectorProvider selectorProvider,
                              final SelectStrategyFactory selectStrategyFactory) {
         // 1. 会创建一个ThreadPerTaskExecutor，线程创建器
-        // 2. newChild()
-        // 3. 线程选择器
+        // 2. newChild()，给每个NioEventLoop配置核心的参数
+        // 3. 创建线程选择器，给每个新连接，分配NioEventLoop线程
         super(nThreads, executor, selectorProvider, selectStrategyFactory, RejectedExecutionHandlers.reject());
     }
 

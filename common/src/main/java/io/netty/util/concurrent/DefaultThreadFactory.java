@@ -65,6 +65,7 @@ public class DefaultThreadFactory implements ThreadFactory {
     }
 
     public static String toPoolName(Class<?> poolType) {
+        // 把类转换成线程池线程名字
         ObjectUtil.checkNotNull(poolType, "poolType");
 
         String poolName = StringUtil.simpleClassName(poolType);
@@ -103,6 +104,7 @@ public class DefaultThreadFactory implements ThreadFactory {
 
     @Override
     public Thread newThread(Runnable r) {
+        // 就是创建的Thread不是原生的，是一个封装后的
         // 这里netty底层的线程是封装后的线程
         Thread t = newThread(FastThreadLocalRunnable.wrap(r), prefix + nextId.incrementAndGet());
         try {
