@@ -825,9 +825,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
+        // 判断当前执行的线程是不是NioEventLoop的线程
+        // 第一次是主线程进入的，这时候还没有创建
         boolean inEventLoop = inEventLoop();
         addTask(task);
+        // 第一次就是进入这里，inEventLoop返回false，因为不是NioEventLoop的线程
         if (!inEventLoop) {
+            // 启动一个线程
+            // TODO 可以学习一下，在启动线程的使用了CAS方法，看是不是已经启动了
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -941,6 +946,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
+        // 判断当前线程是不是未启动的，然后通过CAS启动
         if (state == ST_NOT_STARTED) {
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
@@ -979,6 +985,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                // 这个线程就是自己封装的线程，这里可以学习一下
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -987,6 +994,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 这里才是实际的启动
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {
