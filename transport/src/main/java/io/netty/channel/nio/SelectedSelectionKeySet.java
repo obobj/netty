@@ -21,6 +21,9 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+/**
+ * 这个类就是专门做过优化的类，就是一个Set，但是添加是O(1)
+ */
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
     SelectionKey[] keys;
@@ -46,6 +49,7 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
     @Override
     public boolean remove(Object o) {
+        // 使用的是默认的方法，不需要操作，因为是使用原类的方法
         return false;
     }
 

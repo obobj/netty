@@ -78,6 +78,10 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
 
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue() {
         if (scheduledTaskQueue == null) {
+            // 在这里初始化定时任务队列的，但是这个队列不是线程安全的
+            // netty通过对添加任务的包装实现线程安全
+            // 将添加定时任务变为普通任务
+            // 保证所有操作都在NioEventLoop中实现
             scheduledTaskQueue = new DefaultPriorityQueue<ScheduledFutureTask<?>>(
                     SCHEDULED_FUTURE_TASK_COMPARATOR,
                     // Use same initial capacity as java.util.PriorityQueue

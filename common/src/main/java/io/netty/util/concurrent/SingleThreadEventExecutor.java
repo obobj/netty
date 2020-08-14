@@ -158,6 +158,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         this.maxPendingTasks = Math.max(16, maxPendingTasks);
         this.executor = ThreadExecutorMap.apply(executor, this);
         // 先塞到队列中
+        // 这里创建一个npsq队列
         taskQueue = newTaskQueue(this.maxPendingTasks);
         rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
@@ -282,11 +283,17 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
         long nanoTime = AbstractScheduledEventExecutor.nanoTime();
         for (;;) {
+            // 这里就是拿到定时任务
+            // 比较时间，拿到截止时间最小的一个任务
+            // 跟nanoTime比较，如果小于才返回
+            // 然后塞到普通任务队列里面
             Runnable scheduledTask = pollScheduledTask(nanoTime);
             if (scheduledTask == null) {
                 return true;
             }
             if (!taskQueue.offer(scheduledTask)) {
+                // 这里是如果失败了
+                // 然后又添加到定时任务队列scheduledTaskQueue
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
@@ -344,6 +351,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      */
     protected void addTask(Runnable task) {
         ObjectUtil.checkNotNull(task, "task");
+        // offerTask就是向taskQueue添加一个task
         if (!offerTask(task)) {
             reject(task);
         }
@@ -460,6 +468,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      */
     protected boolean runAllTasks(long timeoutNanos) {
         fetchFromScheduledTaskQueue();
+        // 现在所有的任务都在taskQueue里面了
         Runnable task = pollTask();
         if (task == null) {
             afterRunningAllTasks();
@@ -470,10 +479,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         long runTasks = 0;
         long lastExecutionTime;
         for (;;) {
+            // 按顺序执行每个任务
             safeExecute(task);
 
             runTasks ++;
 
+            // 当累计到64个任务的时候，再计算截止时间
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
             if ((runTasks & 0x3F) == 0) {
@@ -483,6 +494,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 }
             }
 
+            // 没有超时就继续
             task = pollTask();
             if (task == null) {
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
@@ -828,6 +840,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         // 判断当前执行的线程是不是NioEventLoop的线程
         // 第一次是主线程进入的，这时候还没有创建
         boolean inEventLoop = inEventLoop();
+        // 里面调用offerTask就是向taskQueue添加一个task
         addTask(task);
         // 第一次就是进入这里，inEventLoop返回false，因为不是NioEventLoop的线程
         if (!inEventLoop) {

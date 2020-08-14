@@ -172,9 +172,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     // 但是sun.nio.ch.SelectorImpl是linux epoll的实现，mac和windows都是不行
     // 那么退而求其次，既然mac是kqueue，我们就用SelectorImpl的selectedKeys和publicSelectedKeys替换kqueue中对应的变量
     // 其实就是netty认为SelectorImpl性能比较好，尽量靠近
+    // 最坏的情况下，hashset会得到O(n)的复杂度
+    // netty做了处理，使他一直为O(1)
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
+            // JDK的API
             unwrappedSelector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
@@ -510,10 +513,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 }
 
                 // TODO 这里就是对selectCnt进行计数，这是干啥的
+                // 每次轮训后对selectCnt++，表示轮训了selectCnt次数了
                 selectCnt++;
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
                 // TODO 这个变量是啥
+                // 这是控制processSelectedKeys和runAllTasks的执行时间
+                // 默认是50，就是处理IO时间和运行任务时间是1:1
                 final int ioRatio = this.ioRatio;
                 boolean ranTasks;
                 if (ioRatio == 100) {
@@ -529,6 +535,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         ranTasks = runAllTasks();
                     }
                 } else if (strategy > 0) {
+                    // 这里就是计算时间来运行
+                    // processSelectedKeys运行了多久，runAllTasks也需要运行对应时间
                     final long ioStartTime = System.nanoTime();
                     try {
                         // 2.处理产生网络IO事件的channel
@@ -536,6 +544,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     } finally {
                         // Ensure we always run tasks.
                         final long ioTime = System.nanoTime() - ioStartTime;
+                        // 这里就是执行任务的时间不能超过这个时间
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else {
@@ -548,6 +557,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                                 selectCnt - 1, selector);
                     }
                     selectCnt = 0;
+                    // unexpectedSelectorWakeup就是来解决JDK空轮训的BUG
+                    // 实际上unexpectedSelectorWakeup是用来重建selector的
                 } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
                     selectCnt = 0;
                 }
@@ -702,6 +713,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // 另一种类型NioTask，NioTask主要是用于当一个 SelectableChannel 注册到selector的时候，执行一些任务
                 @SuppressWarnings("unchecked")
                 NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
+                // 正式开始处理
                 processSelectedKey(k, task);
             }
 
@@ -856,6 +868,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         if (deadlineNanos == NONE) {
             return selector.select();
         }
+        // 定时任务队列，按照任务的截止时间
         // Timeout will only be 0 if deadline is within 5 microsecs
         long timeoutMillis = deadlineToDelayNanos(deadlineNanos + 995000L) / 1000000L;
         return timeoutMillis <= 0 ? selector.selectNow() : selector.select(timeoutMillis);
