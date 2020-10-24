@@ -149,6 +149,12 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
         try {
             if (ch != null) {
+                // 这里是封装成NioSocketChannel
+                // 配置channel非阻塞
+                // 保存感兴趣的事件OP
+                // 创建unsafe作为读写，创建pipeline
+                // NioSocketChannelConfig，禁止Nagle算法
+                // Nagle让小数据包集合成大数据包发送
                 buf.add(new NioSocketChannel(this, ch));
                 return 1;
             }

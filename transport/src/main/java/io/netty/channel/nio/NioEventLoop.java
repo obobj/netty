@@ -772,6 +772,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 ch.unsafe().forceFlush();
             }
 
+            // 这里开始连接，就是判断到时一个OP_ACCEPT事件
+            // 这里其实就是NioMessageUnsafe的read方法
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {

@@ -77,10 +77,15 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+        // 这里其实就是顶级的抽象类
+        // 客户端channel和服务端channel都是集成这个类
+        // 然后不同的channel向他注册不同的IO事件
+        // 客户端是READ事件，服务端是OP事件
         super(parent);
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+            // 配置阻塞模式
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {

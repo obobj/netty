@@ -61,9 +61,11 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
         @Override
         public void read() {
+            // 这里又是申明了需要inEventLoop线程调用才运行
             assert eventLoop().inEventLoop();
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
+            // 这里主要是处理服务端接入的数据
             final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
             allocHandle.reset(config);
 
@@ -72,7 +74,9 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
+                        // 通过handler来控制连接接入的速率，默认一次性16个
                         int localRead = doReadMessages(readBuf);
+                        // 没有读到新的连接
                         if (localRead == 0) {
                             break;
                         }

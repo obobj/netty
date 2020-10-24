@@ -69,6 +69,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      *        the parent of this channel. {@code null} if there's no parent.
      */
     protected AbstractChannel(Channel parent) {
+        // TODO 为什么
+        // 创建客户端channel的channel，使用反射创建的
         this.parent = parent;
         id = newId();
         unsafe = newUnsafe();
