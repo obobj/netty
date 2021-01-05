@@ -187,15 +187,20 @@ import io.netty.channel.ChannelHandlerContext;
 public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
 
     private final ByteOrder byteOrder;
+    // 超过后是否要失败
     private final int maxFrameLength;
+    // 长度域偏移量
     private final int lengthFieldOffset;
+    // 长度域的长度
     private final int lengthFieldLength;
     private final int lengthFieldEndOffset;
     private final int lengthAdjustment;
     private final int initialBytesToStrip;
     private final boolean failFast;
     private boolean discardingTooLongFrame;
+    // 丢弃了多少字节
     private long tooLongFrameLength;
+    // 丢弃模式
     private long bytesToDiscard;
 
     /**
@@ -370,6 +375,7 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
         } else {
             // Enter the discard mode and discard everything received so far.
             discardingTooLongFrame = true;
+            // 经过处理后，还需要丢弃多少，这里就是准备下次循环进入丢弃模式需要丢弃的
             bytesToDiscard = discard;
             in.skipBytes(in.readableBytes());
         }
@@ -394,15 +400,19 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
      *                          be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+        // 已经在丢弃状态了
         if (discardingTooLongFrame) {
             discardingTooLongFrame(in);
         }
 
+        // lengthFieldEndOffset = lengthFieldOffset + lengthFieldLength;
         if (in.readableBytes() < lengthFieldEndOffset) {
             return null;
         }
 
+        // 长度域在二进制流里面实际的位置
         int actualLengthFieldOffset = in.readerIndex() + lengthFieldOffset;
+        // 这里就是获取长度域的长度，目前只支持1、2、4、8
         long frameLength = getUnadjustedFrameLength(in, actualLengthFieldOffset, lengthFieldLength, byteOrder);
 
         if (frameLength < 0) {
@@ -415,6 +425,7 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
             failOnFrameLengthLessThanLengthFieldEndOffset(in, frameLength, lengthFieldEndOffset);
         }
 
+        // 进入丢弃模式，传输的长度域的长度 + lengthAdjustment + lengthFieldEndOffset大于了maxFrameLength
         if (frameLength > maxFrameLength) {
             exceededFrameLength(in, frameLength);
             return null;
@@ -429,6 +440,7 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
         if (initialBytesToStrip > frameLengthInt) {
             failOnFrameLengthLessThanInitialBytesToStrip(in, frameLength, initialBytesToStrip);
         }
+        // 跳过前面的字节
         in.skipBytes(initialBytesToStrip);
 
         // extract frame
@@ -474,12 +486,15 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
     }
 
     private void failIfNecessary(boolean firstDetectionOfTooLongFrame) {
+        // 经过本次处理后后续可能是正常的
         if (bytesToDiscard == 0) {
             // Reset to the initial state and tell the handlers that
             // the frame was too large.
             long tooLongFrameLength = this.tooLongFrameLength;
             this.tooLongFrameLength = 0;
+            // 关闭丢弃模式
             discardingTooLongFrame = false;
+            // 首次遇到这样的情况，是否需要快速失败
             if (!failFast || firstDetectionOfTooLongFrame) {
                 fail(tooLongFrameLength);
             }

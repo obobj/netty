@@ -94,6 +94,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     // - cumulation cannot be resized to accommodate the additional data
                     // - cumulation can be expanded with a reallocation operation to accommodate but the buffer is
                     //   assumed to be shared (e.g. refCnt() > 1) and the reallocation may not be safe.
+                    // 当前累加器容量不够的话就进行扩容
                     return expandCumulation(alloc, cumulation, in);
                 }
                 cumulation.writeBytes(in, in.readerIndex(), required);
@@ -267,12 +268,15 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        // 这个是基于ByteBuf来进行解码的，如果不是的话，就直接向下传播
         if (msg instanceof ByteBuf) {
             CodecOutputList out = CodecOutputList.newInstance();
             try {
+                // 累加器是空的，证明是第一次
                 first = cumulation == null;
                 cumulation = cumulator.cumulate(ctx.alloc(),
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
+                // 累加到cumulation中
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
                 throw e;
@@ -320,7 +324,9 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      * Get {@code numElements} out of the {@link CodecOutputList} and forward these through the pipeline.
      */
     static void fireChannelRead(ChannelHandlerContext ctx, CodecOutputList msgs, int numElements) {
+        // 如果通过子类解析出来的对象，numElements就是有几个对象，传播一下
         for (int i = 0; i < numElements; i ++) {
+            // 这里得到的就是ByteBuf，需要传播到业务解码器里面
             ctx.fireChannelRead(msgs.getUnsafe(i));
         }
     }
@@ -418,9 +424,11 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
         try {
+            // 循环读取累加器
             while (in.isReadable()) {
                 int outSize = out.size();
 
+                // list 里面是否有对象了，如果有就向下进行传播
                 if (outSize > 0) {
                     fireChannelRead(ctx, out, outSize);
                     out.clear();
@@ -436,6 +444,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     outSize = 0;
                 }
 
+                // 记录可读数据长度
                 int oldInputLength = in.readableBytes();
                 decodeRemovalReentryProtection(ctx, in, out);
 
@@ -447,14 +456,18 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     break;
                 }
 
+                // 通过decodeRemovalReentryProtection没有解析出来
                 if (outSize == out.size()) {
+                    // 当前累加器数据可能不足以解析，等待再读取
                     if (oldInputLength == in.readableBytes()) {
                         break;
                     } else {
+                        // 已经从in中读取了数据，但是没有解析到对象
                         continue;
                     }
                 }
 
+                // 没有从当前累加器读取到数据，但是却解析到了数据，简直诡异
                 if (oldInputLength == in.readableBytes()) {
                     throw new DecoderException(
                             StringUtil.simpleClassName(getClass()) +
@@ -498,6 +511,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             throws Exception {
         decodeState = STATE_CALLING_CHILD_DECODE;
         try {
+            // 根据不同协议子类的自行实现
             decode(ctx, in, out);
         } finally {
             boolean removePending = decodeState == STATE_HANDLER_REMOVED_PENDING;
