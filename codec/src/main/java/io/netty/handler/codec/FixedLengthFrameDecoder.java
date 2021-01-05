@@ -40,6 +40,7 @@ import java.util.List;
  */
 public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
 
+    // 这里就是固定长度解码器
     private final int frameLength;
 
     /**
@@ -55,6 +56,7 @@ public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
     @Override
     protected final void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         Object decoded = decode(ctx, in);
+        // 这个就是解析出来对象了，加入到容器中去
         if (decoded != null) {
             out.add(decoded);
         }

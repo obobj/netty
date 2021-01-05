@@ -41,6 +41,7 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
     private final boolean failFast;
     private final boolean stripDelimiter;
 
+    // 超过长度maxLength了正在属于丢弃模式
     /** True if we're discarding input because we're already over maxLength.  */
     private boolean discarding;
     private int discardedBytes;
@@ -96,20 +97,25 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
      *                          be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
+        // 找\r\n或者\n之类的
         final int eol = findEndOfLine(buffer);
         if (!discarding) {
+            // 已经找到了
             if (eol >= 0) {
                 final ByteBuf frame;
                 final int length = eol - buffer.readerIndex();
                 final int delimLength = buffer.getByte(eol) == '\r'? 2 : 1;
 
                 if (length > maxLength) {
+                    // 会直接丢弃后把readerIndex移到换行符下一个位置，再传播异常
                     buffer.readerIndex(eol + delimLength);
                     fail(ctx, length);
                     return null;
                 }
 
+                // 算不算分割符
                 if (stripDelimiter) {
+                    // 读完后readerIndex会指向到下一个，就是分割符的位置，这里还需要跳过分割符
                     frame = buffer.readRetainedSlice(length);
                     buffer.skipBytes(delimLength);
                 } else {
@@ -118,8 +124,10 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
 
                 return frame;
             } else {
+                // 没找到换行符
                 final int length = buffer.readableBytes();
                 if (length > maxLength) {
+                    // 直接丢弃，移动到写指针处，写指针处就是最新的读入结果
                     discardedBytes = length;
                     buffer.readerIndex(buffer.writerIndex());
                     discarding = true;
@@ -131,6 +139,7 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
                 return null;
             }
         } else {
+            // 如果这里是丢弃模式，找到了分割符
             if (eol >= 0) {
                 final int length = discardedBytes + eol - buffer.readerIndex();
                 final int delimLength = buffer.getByte(eol) == '\r'? 2 : 1;
