@@ -120,10 +120,12 @@ public final class ChannelOutboundBuffer {
             tail.next = entry;
         }
         tailEntry = entry;
+        // unflushedEntry第一个添加的时候unflushedEntry == null
         if (unflushedEntry == null) {
             unflushedEntry = entry;
         }
 
+        // 添加后统计一下当前有多少字节要写
         // increment pending bytes after adding message to the unflushed arrays.
         // See https://github.com/netty/netty/issues/1619
         incrementPendingOutboundBytes(entry.pendingSize, false);
@@ -138,6 +140,8 @@ public final class ChannelOutboundBuffer {
         // where added in the meantime.
         //
         // See https://github.com/netty/netty/issues/2577
+        // 默认情况下unflushedEntry是不为null的
+        // 默认情况下flushedEntry是null的
         Entry entry = unflushedEntry;
         if (entry != null) {
             if (flushedEntry == null) {
@@ -145,6 +149,7 @@ public final class ChannelOutboundBuffer {
                 flushedEntry = entry;
             }
             do {
+                // 计数
                 flushed ++;
                 if (!entry.promise.setUncancellable()) {
                     // Was cancelled so make sure we free up memory and notify about the freed bytes
@@ -173,7 +178,11 @@ public final class ChannelOutboundBuffer {
         }
 
         long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size);
+        // getWriteBufferHighWaterMark就是写buffer的高水位值
+        // 标志不能超过这个64K
         if (newWriteBufferSize > channel.config().getWriteBufferHighWaterMark()) {
+            // 如果超过了表示不能写，通过CAS等方法
+            // TODO CAS方式还是可以看看
             setUnwritable(invokeLater);
         }
     }
@@ -191,6 +200,8 @@ public final class ChannelOutboundBuffer {
             return;
         }
 
+        // 每次flush一个对象，需要从队列中减去
+        // 如果减去到可以写了，就设置可写状态了
         long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, -size);
         if (notifyWritability && newWriteBufferSize < channel.config().getWriteBufferLowWaterMark()) {
             setWritable(invokeLater);

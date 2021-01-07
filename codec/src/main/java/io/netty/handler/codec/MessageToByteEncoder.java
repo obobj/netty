@@ -99,20 +99,29 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         ByteBuf buf = null;
         try {
+            // 这里就是判断能不能匹配到，就是能不能处理到
+            // 提供了一个ReflectiveMatcher类型，这个就是判断是否是集成时候传入的<I>
             if (acceptOutboundMessage(msg)) {
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
                 buf = allocateBuffer(ctx, cast, preferDirect);
                 try {
+                    // 分配出来的内存传入，这个方式就是把转换后的对象填充到里面
+                    // 这里就是留给子类去实现的encode
                     encode(ctx, cast, buf);
                 } finally {
+                    // 如果cast是一个ByteBuf对象，这个时候可能就需要进行释放了
+                    // ReferenceCounted通过这个接口判断
                     ReferenceCountUtil.release(cast);
                 }
 
+                // 如果有数据
                 if (buf.isReadable()) {
+                    // 链式一层一层传递，最终会传递到HEAD节点
                     ctx.write(buf, promise);
                 } else {
                     buf.release();
+                    // 需要给一个空的，来方便你回调
                     ctx.write(Unpooled.EMPTY_BUFFER, promise);
                 }
                 buf = null;

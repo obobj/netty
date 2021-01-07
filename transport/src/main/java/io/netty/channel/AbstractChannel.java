@@ -866,6 +866,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
+            // 缓冲
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             if (outboundBuffer == null) {
                 // If the outboundBuffer is null we know the channel was closed and so
@@ -880,6 +881,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             int size;
             try {
+                // 从非堆外内存到堆外内存的转化，分析了AbstractNioChannel
+                // 都是创建一段堆外内存通过copy方式进行转化
+                // TODO 为什么一定要非堆外内存
                 msg = filterOutboundMessage(msg);
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
@@ -891,11 +895,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            //  插入到写队列中
             outboundBuffer.addMessage(msg, size, promise);
         }
 
         @Override
         public final void flush() {
+            // 添加刷新标志，就是移动3个指针，设置写状态，更新为可写
+            // 遍历buffer队列，过滤ByteBuf
             assertEventLoop();
 
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
@@ -937,6 +944,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
+                // 这里是主要执行的
                 doWrite(outboundBuffer);
             } catch (Throwable t) {
                 if (t instanceof IOException && config().isAutoClose()) {
