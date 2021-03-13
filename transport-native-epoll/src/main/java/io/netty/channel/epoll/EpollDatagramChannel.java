@@ -32,7 +32,6 @@ import io.netty.channel.socket.InternetProtocolFamily;
 import io.netty.channel.unix.DatagramSocketAddress;
 import io.netty.channel.unix.Errors;
 import io.netty.channel.unix.Errors.NativeIoException;
-import io.netty.channel.unix.IovArray;
 import io.netty.channel.unix.Socket;
 import io.netty.channel.unix.UnixChannelUtil;
 import io.netty.util.ReferenceCountUtil;
@@ -298,7 +297,9 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
 
             try {
                 // Check if sendmmsg(...) is supported which is only the case for GLIBC 2.14+
-                if (Native.IS_SUPPORTING_SENDMMSG && in.size() > 1) {
+                if (Native.IS_SUPPORTING_SENDMMSG && in.size() > 1 ||
+                        // We only handle UDP_SEGMENT in sendmmsg.
+                        in.current() instanceof SegmentedDatagramPacket) {
                     NativeDatagramPacketArray array = cleanDatagramPacketArray();
                     array.add(in, isConnected());
                     int cnt = array.count();
@@ -350,7 +351,7 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
 
     private boolean doWriteMessage(Object msg) throws Exception {
         final ByteBuf data;
-        InetSocketAddress remoteAddress;
+        final InetSocketAddress remoteAddress;
         if (msg instanceof AddressedEnvelope) {
             @SuppressWarnings("unchecked")
             AddressedEnvelope<ByteBuf, InetSocketAddress> envelope =
@@ -367,42 +368,21 @@ public final class EpollDatagramChannel extends AbstractEpollChannel implements 
             return true;
         }
 
-        final long writtenBytes;
-        if (data.hasMemoryAddress()) {
-            long memoryAddress = data.memoryAddress();
-            if (remoteAddress == null) {
-                writtenBytes = socket.writeAddress(memoryAddress, data.readerIndex(), data.writerIndex());
-            } else {
-                writtenBytes = socket.sendToAddress(memoryAddress, data.readerIndex(), data.writerIndex(),
-                        remoteAddress.getAddress(), remoteAddress.getPort());
-            }
-        } else if (data.nioBufferCount() > 1) {
-            IovArray array = ((EpollEventLoop) eventLoop()).cleanIovArray();
-            array.add(data, data.readerIndex(), data.readableBytes());
-            int cnt = array.count();
-            assert cnt != 0;
-
-            if (remoteAddress == null) {
-                writtenBytes = socket.writevAddresses(array.memoryAddress(0), cnt);
-            } else {
-                writtenBytes = socket.sendToAddresses(array.memoryAddress(0), cnt,
-                        remoteAddress.getAddress(), remoteAddress.getPort());
-            }
-        } else  {
-            ByteBuffer nioData = data.internalNioBuffer(data.readerIndex(), data.readableBytes());
-            if (remoteAddress == null) {
-                writtenBytes = socket.write(nioData, nioData.position(), nioData.limit());
-            } else {
-                writtenBytes = socket.sendTo(nioData, nioData.position(), nioData.limit(),
-                        remoteAddress.getAddress(), remoteAddress.getPort());
-            }
-        }
-
-        return writtenBytes > 0;
+        return doWriteOrSendBytes(data, remoteAddress, false) > 0;
     }
 
     @Override
     protected Object filterOutboundMessage(Object msg) {
+        if (msg instanceof SegmentedDatagramPacket) {
+            if (!Native.IS_SUPPORTING_UDP_SEGMENT) {
+                throw new UnsupportedOperationException(
+                        "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
+            }
+            SegmentedDatagramPacket packet = (SegmentedDatagramPacket) msg;
+            ByteBuf content = packet.content();
+            return UnixChannelUtil.isBufferCopyNeededForWrite(content) ?
+                    packet.replace(newDirectBuffer(packet, content)) : msg;
+        }
         if (msg instanceof DatagramPacket) {
             DatagramPacket packet = (DatagramPacket) msg;
             ByteBuf content = packet.content();

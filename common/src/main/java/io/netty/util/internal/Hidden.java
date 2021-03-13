@@ -115,6 +115,22 @@ class Hidden {
                     "sun.security.ssl.SSLEngineImpl",
                     "wrap");
 
+            builder.allowBlockingCallsInside(
+                    "io.netty.resolver.dns.UnixResolverDnsServerAddressStreamProvider",
+                    "parse");
+
+            builder.allowBlockingCallsInside(
+                    "io.netty.resolver.dns.UnixResolverDnsServerAddressStreamProvider",
+                    "parseEtcResolverSearchDomains");
+
+            builder.allowBlockingCallsInside(
+                    "io.netty.resolver.dns.UnixResolverDnsServerAddressStreamProvider",
+                    "parseEtcResolverOptions");
+
+            builder.allowBlockingCallsInside(
+                    "io.netty.resolver.HostsFileParser",
+                    "parse");
+
             builder.nonBlockingThreadPredicate(new Function<Predicate<Thread>, Predicate<Thread>>() {
                 @Override
                 public Predicate<Thread> apply(final Predicate<Thread> p) {

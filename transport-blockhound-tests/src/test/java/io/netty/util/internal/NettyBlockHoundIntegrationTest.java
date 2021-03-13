@@ -26,6 +26,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
@@ -35,6 +36,8 @@ import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
+import io.netty.resolver.dns.DnsNameResolverBuilder;
+import io.netty.resolver.dns.DnsServerAddressStreamProviders;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.DefaultThreadFactory;
@@ -53,8 +56,11 @@ import reactor.blockhound.BlockingOperationError;
 import reactor.blockhound.integration.BlockHoundIntegration;
 
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Queue;
 import java.util.ServiceLoader;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -69,6 +75,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static io.netty.buffer.Unpooled.wrappedBuffer;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -311,6 +318,63 @@ public class NettyBlockHoundIntegrationTest {
             }
             group.shutdownGracefully();
             ReferenceCountUtil.release(sslClientCtx);
+        }
+    }
+
+    @Test(timeout = 5000L)
+    public void testUnixResolverDnsServerAddressStreamProvider_Parse() throws InterruptedException {
+        doTestParseResolverFilesAllowsBlockingCalls(DnsServerAddressStreamProviders::unixDefault);
+    }
+
+    @Test(timeout = 5000L)
+    public void testHostsFileParser_Parse() throws InterruptedException {
+        doTestParseResolverFilesAllowsBlockingCalls(DnsNameResolverBuilder::new);
+    }
+
+    @Test(timeout = 5000L)
+    public void testUnixResolverDnsServerAddressStreamProvider_ParseEtcResolverSearchDomainsAndOptions()
+            throws InterruptedException {
+        NioEventLoopGroup group = new NioEventLoopGroup();
+        try {
+            DnsNameResolverBuilder builder = new DnsNameResolverBuilder(group.next())
+                    .channelFactory(NioDatagramChannel::new);
+            doTestParseResolverFilesAllowsBlockingCalls(builder::build);
+        } finally {
+            group.shutdownGracefully();
+        }
+    }
+
+    private static void doTestParseResolverFilesAllowsBlockingCalls(Callable<Object> callable)
+            throws InterruptedException {
+        SingleThreadEventExecutor executor =
+                new SingleThreadEventExecutor(null, new DefaultThreadFactory("test"), true) {
+                    @Override
+                    protected void run() {
+                        while (!confirmShutdown()) {
+                            Runnable task = takeTask();
+                            if (task != null) {
+                                task.run();
+                            }
+                        }
+                    }
+                };
+        try {
+            CountDownLatch latch = new CountDownLatch(1);
+            List<Object> result = new ArrayList<>();
+            List<Throwable> error = new ArrayList<>();
+            executor.execute(() -> {
+                try {
+                    result.add(callable.call());
+                } catch (Throwable t) {
+                    error.add(t);
+                }
+                latch.countDown();
+            });
+            latch.await();
+            assertEquals(0, error.size());
+            assertEquals(1, result.size());
+        } finally {
+            executor.shutdownGracefully();
         }
     }
 
